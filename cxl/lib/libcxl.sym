@@ -205,6 +205,7 @@ global:
 	cxl_region_clear_all_targets;
 	cxl_region_decode_commit;
 	cxl_region_label_update;
+	cxl_pmem_region_label_delete;
 	cxl_region_decode_reset;
 	cxl_mapping_get_first;
 	cxl_mapping_get_next;

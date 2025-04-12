@@ -308,6 +308,7 @@ struct cxl_region *cxl_region_get_first(struct cxl_decoder *decoder);
 struct cxl_region *cxl_region_get_next(struct cxl_region *region);
 int cxl_region_decode_is_committed(struct cxl_region *region);
 int cxl_region_is_enabled(struct cxl_region *region);
+int cxl_region_is_enabled(struct cxl_region *region);
 int cxl_region_disable(struct cxl_region *region);
 int cxl_region_enable(struct cxl_region *region);
 int cxl_region_delete(struct cxl_region *region);
@@ -338,6 +339,7 @@ int cxl_region_decode_commit(struct cxl_region *region);
 int cxl_region_label_update(struct cxl_region *region);
 int cxl_region_decode_reset(struct cxl_region *region);
 bool cxl_region_qos_class_mismatch(struct cxl_region *region);
+int cxl_pmem_region_label_delete(struct cxl_region *region);
 
 #define cxl_region_foreach(decoder, region)                                    \
 	for (region = cxl_region_get_first(decoder); region != NULL;           \
