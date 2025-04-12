@@ -30,6 +30,7 @@ static struct region_params {
 	int granularity;
 	bool memdevs;
 	bool force;
+	bool destroy_label;
 	bool human;
 	bool debug;
 	bool enforce_qos;
@@ -86,6 +87,15 @@ OPT_BOOLEAN('m', "memdevs", &param.memdevs, \
 OPT_BOOLEAN('u', "human", &param.human, "use human friendly number formats"), \
 OPT_BOOLEAN('Q', "enforce-qos", &param.enforce_qos, "enforce qos_class match")
 
+
+#define DESTROY_OPTIONS() \
+OPT_STRING('t', "type", &param.type, \
+	   "region type", "region type - 'pmem' or 'ram'"), \
+OPT_BOOLEAN('D', "destroy_label", &param.destroy_label, \
+		    "destroy region label from LSA"), \
+OPT_BOOLEAN('f', "force", &param.force, \
+		    "destroy region even if currently active")
+
 static const struct option create_options[] = {
 	BASE_OPTIONS(),
 	CREATE_OPTIONS(),
@@ -106,8 +116,7 @@ static const struct option disable_options[] = {
 
 static const struct option destroy_options[] = {
 	BASE_OPTIONS(),
-	OPT_BOOLEAN('f', "force", &param.force,
-		    "destroy region even if currently active"),
+	DESTROY_OPTIONS(),
 	OPT_END(),
 };
 
@@ -844,10 +853,25 @@ static int destroy_region(struct cxl_region *region)
 {
 	const char *devname = cxl_region_get_devname(region);
 	unsigned int ways, i;
+	enum cxl_decoder_mode mode;
 	int rc;
+
+	if (param.type)
+		mode = cxl_decoder_mode_from_ident(param.type);
+	else
+		mode = CXL_DECODER_MODE_RAM;
 
 	/* First, unbind/disable the region if needed */
 	if (cxl_region_is_enabled(region)) {
+		if (mode == CXL_DECODER_MODE_PMEM && param.destroy_label) {
+			rc = cxl_region_label_delete(region);
+			if (rc) {
+				log_err(&rl, "%s: failed region label deletion: %s\n",
+						devname, strerror(-rc));
+				return rc;
+			}
+		}
+
 		if (param.force) {
 			rc = disable_region(region);
 			if (rc) {
@@ -859,6 +883,15 @@ static int destroy_region(struct cxl_region *region)
 			log_err(&rl, "%s active. Disable it or use --force\n",
 				devname);
 			return -EBUSY;
+		}
+	} else {
+		if (mode == CXL_DECODER_MODE_PMEM && param.destroy_label) {
+			rc = cxl_region_label_delete_disabled(region);
+			if (rc) {
+				log_err(&rl, "%s: failed region label deletion: %s\n",
+						devname, strerror(-rc));
+				return rc;
+			}
 		}
 	}
 

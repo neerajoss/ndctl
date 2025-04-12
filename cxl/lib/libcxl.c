@@ -1090,6 +1090,74 @@ CXL_EXPORT int cxl_region_label_update(struct cxl_region *region)
 	return 0;
 }
 
+CXL_EXPORT int cxl_region_label_delete(struct cxl_region *region)
+{
+	const char *devname = cxl_region_get_devname(region);
+	struct cxl_ctx *ctx = cxl_region_get_ctx(region);
+	int len = region->buf_len, rc;
+	char *path = region->dev_buf;
+	char *region_path, *pmem_name;
+	char buf[SYSFS_ATTR_SIZE];
+
+	region_path = realpath(region->dev_path, NULL);
+	if (!region_path) {
+		err(ctx, "%s: Invalid region dev_path%s!\n", devname,
+				region->dev_path);
+		return -EINVAL;
+	}
+
+	pmem_name = basename(region_path);
+
+	if (snprintf(path, len, "%s/pmem_%s/region_label_delete",
+				region->dev_path, pmem_name) >= len) {
+		err(ctx, "%s: buffer too small!\n", devname);
+		return -ENXIO;
+	}
+
+	/* No region label deletion for LSA < 2.1 */
+	if (access(path, F_OK) != 0) {
+		dbg(ctx, "%s LSA 2.1 format not supported\n", devname);
+		return 0;
+	}
+
+	sprintf(buf, "%d\n", 1);
+	rc = sysfs_write_attr(ctx, path, buf);
+	if (rc < 0)
+		return rc;
+
+	return 0;
+}
+
+CXL_EXPORT int cxl_region_label_delete_disabled(struct cxl_region *region)
+{
+	const char *devname = cxl_region_get_devname(region);
+	struct cxl_ctx *ctx = cxl_region_get_ctx(region);
+	int rc;
+
+	/* Enable region and after deleting LSA region label disable back */
+	util_bind(devname, region->module, "cxl", ctx);
+
+	if (!cxl_region_is_enabled(region)) {
+		err(ctx, "%s: failed to re-enable cxl region "
+				"(for region label deletion)\n", devname);
+		return -ENXIO;
+	}
+
+	rc = cxl_region_label_delete(region);
+	if (rc) {
+		err(ctx, "%s: failed LSA region label deletion: %s\n",
+				devname, strerror(-rc));
+		return rc;
+	}
+
+	if (cxl_region_disable(region)) {
+		err(ctx, "%s: failed to disable region\n", devname);
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
 static struct cxl_decoder *__cxl_port_match_decoder(struct cxl_port *port,
 						    const char *ident)
 {
