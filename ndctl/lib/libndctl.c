@@ -63,7 +63,7 @@ NDCTL_EXPORT size_t ndctl_min_namespace_size(void)
 NDCTL_EXPORT size_t ndctl_sizeof_namespace_label(void)
 {
 	/* TODO: v1.2 label support */
-	return offsetof(struct namespace_label, type_guid);
+	return offsetof(struct namespace_efi_label, type_guid);
 }
 
 NDCTL_EXPORT double ndctl_decode_smart_temperature(unsigned int temp)

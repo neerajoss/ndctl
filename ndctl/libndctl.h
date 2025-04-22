@@ -337,19 +337,23 @@ int ndctl_dimm_zero_labels(struct ndctl_dimm *dimm);
 int ndctl_dimm_zero_label_extent(struct ndctl_dimm *dimm,
 		unsigned int len, unsigned int offset);
 struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm);
-struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *dimm);
 struct ndctl_cmd *ndctl_dimm_read_label_extent(struct ndctl_dimm *dimm,
 		unsigned int len, unsigned int offset);
 int ndctl_dimm_validate_labels(struct ndctl_dimm *dimm);
-enum ndctl_namespace_version {
-	NDCTL_NS_VERSION_1_1,
-	NDCTL_NS_VERSION_1_2,
+enum ndctl_label_version {
+	NDCTL_LABEL_VERSION_INVALID,
+	NDCTL_LABEL_VERSION_1_1,
+	NDCTL_LABEL_VERSION_1_2,
+	NDCTL_LABEL_VERSION_2_1,
 };
+struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *dimm,
+		enum ndctl_label_version v);
 int ndctl_dimm_init_labels(struct ndctl_dimm *dimm,
-		enum ndctl_namespace_version v);
+		enum ndctl_label_version v);
 unsigned long ndctl_dimm_get_available_labels(struct ndctl_dimm *dimm);
 unsigned int ndctl_dimm_sizeof_namespace_label(struct ndctl_dimm *dimm);
 unsigned int ndctl_dimm_sizeof_namespace_index(struct ndctl_dimm *dimm);
+enum ndctl_label_version ndctl_dimm_label_version(struct ndctl_dimm *dimm);
 unsigned int ndctl_cmd_cfg_size_get_size(struct ndctl_cmd *cfg_size);
 ssize_t ndctl_cmd_cfg_read_get_data(struct ndctl_cmd *cfg_read, void *buf,
 		unsigned int len, unsigned int offset);

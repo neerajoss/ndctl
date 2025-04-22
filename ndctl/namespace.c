@@ -1190,7 +1190,7 @@ static int enable_labels(struct ndctl_region *region)
 {
 	int mappings = ndctl_region_get_mappings(region);
 	struct ndctl_cmd *cmd_read = NULL;
-	enum ndctl_namespace_version v;
+	enum ndctl_label_version v;
 	struct ndctl_dimm *dimm;
 	int count;
 
@@ -1227,13 +1227,13 @@ static int enable_labels(struct ndctl_region *region)
 	if (count)
 		goto out;
 
-	v = NDCTL_NS_VERSION_1_2;
+	v = NDCTL_LABEL_VERSION_1_2;
 retry:
 	ndctl_dimm_foreach_in_region(region, dimm) {
 		int num_labels, avail;
 
 		ndctl_cmd_unref(cmd_read);
-		cmd_read = ndctl_dimm_read_label_index(dimm);
+		cmd_read = ndctl_dimm_read_label_index(dimm, v);
 		if (!cmd_read)
 			continue;
 
@@ -1251,8 +1251,8 @@ retry:
 		 * maintains for ongoing updates.
 		 */
 		avail = ndctl_dimm_get_available_labels(dimm) + 1;
-		if (num_labels != avail && v == NDCTL_NS_VERSION_1_2) {
-			v = NDCTL_NS_VERSION_1_1;
+		if (num_labels != avail && v == NDCTL_LABEL_VERSION_1_2) {
+			v = NDCTL_LABEL_VERSION_1_1;
 			goto retry;
 		}
 

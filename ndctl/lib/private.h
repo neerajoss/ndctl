@@ -29,6 +29,7 @@ struct nvdimm_data {
 	struct ndctl_cmd *cmd_read;
 	void *data;
 	unsigned long config_size;
+	enum ndctl_label_version label_version;
 	size_t nslabel_size;
 	int ns_current, ns_next;
 };

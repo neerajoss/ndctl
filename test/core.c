@@ -291,8 +291,8 @@ retry:
 			ndctl_region_disable_invalidate(region);
 
 		ndctl_dimm_foreach (bus, dimm) {
-			ndctl_dimm_read_label_index(dimm);
-			ndctl_dimm_init_labels(dimm, NDCTL_NS_VERSION_1_2);
+			ndctl_dimm_read_label_index(dimm, NDCTL_LABEL_VERSION_1_2);
+			ndctl_dimm_init_labels(dimm, NDCTL_LABEL_VERSION_1_2);
 			ndctl_dimm_disable(dimm);
 			ndctl_dimm_enable(dimm);
 		}

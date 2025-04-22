@@ -2469,8 +2469,8 @@ static int reset_dimms(struct ndctl_bus *bus, enum dimm_reset reset)
 		if (reset == DIMM_ZERO)
 			ndctl_dimm_zero_labels(dimm);
 		else {
-			ndctl_dimm_read_label_index(dimm);
-			ndctl_dimm_init_labels(dimm, NDCTL_NS_VERSION_1_2);
+			ndctl_dimm_read_label_index(dimm, NDCTL_LABEL_VERSION_1_2);
+			ndctl_dimm_init_labels(dimm, NDCTL_LABEL_VERSION_1_2);
 		}
 		ndctl_dimm_disable(dimm);
 		rc = ndctl_dimm_enable(dimm);

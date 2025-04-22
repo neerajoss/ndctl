@@ -261,6 +261,12 @@ NDCTL_EXPORT unsigned int ndctl_dimm_sizeof_namespace_index(struct ndctl_dimm *d
 	return sizeof_namespace_index(&dimm->ndd);
 }
 
+NDCTL_EXPORT enum ndctl_label_version ndctl_dimm_label_version(struct ndctl_dimm *dimm)
+{
+	struct nvdimm_data *ndd = &dimm->ndd;
+	return ndd->label_version;
+}
+
 /*
  * If the dimm labels have not been previously validated this routine
  * will make up a default size. Otherwise, it will pick the size based
@@ -269,9 +275,9 @@ NDCTL_EXPORT unsigned int ndctl_dimm_sizeof_namespace_index(struct ndctl_dimm *d
 NDCTL_EXPORT unsigned int ndctl_dimm_sizeof_namespace_label(struct ndctl_dimm *dimm)
 {
 	struct nvdimm_data *ndd = &dimm->ndd;
+	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
 	struct namespace_index nsindex;
-	ssize_t offset, size;
-	int v1 = 0, v2 = 0;
+	ssize_t offset;
 
 	if (ndd->nslabel_size)
 		return ndd->nslabel_size;
@@ -289,20 +295,34 @@ NDCTL_EXPORT unsigned int ndctl_dimm_sizeof_namespace_label(struct ndctl_dimm *d
 		 * fully validate the index block. Instead just assume
 		 * v1.1 unless there's 2 index blocks that say v1.2.
 		 */
+
+		if ((le16_to_cpu(nsindex.major) == 2) &&
+				(le16_to_cpu(nsindex.minor) == 1))
+			ndd->label_version = NDCTL_LABEL_VERSION_2_1;
+
 		if (le16_to_cpu(nsindex.major) == 1) {
 			if (le16_to_cpu(nsindex.minor) == 1)
-				v1++;
+				ndd->label_version = NDCTL_LABEL_VERSION_1_1;
 			else if (le16_to_cpu(nsindex.minor) == 2)
-				v2++;
+				ndd->label_version = NDCTL_LABEL_VERSION_1_2;
 		}
 	}
 
-	if (v2 > v1)
-		size = 256;
-	else
-		size = 128;
-	ndd->nslabel_size = size;
-	return size;
+	switch (ndd->label_version) {
+	case NDCTL_LABEL_VERSION_1_1:
+		ndd->nslabel_size = 128;
+		break;
+	case NDCTL_LABEL_VERSION_1_2:
+	case NDCTL_LABEL_VERSION_2_1:
+		ndd->nslabel_size = 256;
+		break;
+	default:
+		dbg(ctx, "Invalid label version, setting default v1.1 size\n");
+		ndd->nslabel_size = 128;
+		ndd->label_version = NDCTL_LABEL_VERSION_1_1;
+	}
+
+	return ndd->nslabel_size;
 }
 
 static int label_validate(struct nvdimm_data *ndd)
@@ -357,12 +377,12 @@ static int label_next_nsindex(int index)
 	return (index + 1) % 2;
 }
 
-static struct namespace_label *label_base(struct nvdimm_data *ndd)
+static struct lsa_label *label_base(struct nvdimm_data *ndd)
 {
 	char *base = (char *) to_namespace_index(ndd, 0);
 
 	base += 2 * sizeof_namespace_index(ndd);
-	return (struct namespace_label *) base;
+	return (struct lsa_label *) base;
 }
 
 static void init_ndd(struct nvdimm_data *ndd, struct ndctl_cmd *cmd_read,
@@ -379,7 +399,7 @@ static void init_ndd(struct nvdimm_data *ndd, struct ndctl_cmd *cmd_read,
 }
 
 static int write_label_index(struct ndctl_dimm *dimm,
-		enum ndctl_namespace_version ver, unsigned index, unsigned seq)
+		enum ndctl_label_version ver, unsigned index, unsigned seq)
 {
 	struct nvdimm_data *ndd = &dimm->ndd;
 	struct namespace_index *nsindex;
@@ -393,10 +413,11 @@ static int write_label_index(struct ndctl_dimm *dimm,
 	 * to the desired version here.
 	 */
 	switch (ver) {
-	case NDCTL_NS_VERSION_1_1:
+	case NDCTL_LABEL_VERSION_1_1:
 		ndd->nslabel_size = 128;
 		break;
-	case NDCTL_NS_VERSION_1_2:
+	case NDCTL_LABEL_VERSION_1_2:
+	case NDCTL_LABEL_VERSION_2_1:
 		ndd->nslabel_size = 256;
 		break;
 	default:
@@ -437,7 +458,7 @@ static int write_label_index(struct ndctl_dimm *dimm,
 }
 
 NDCTL_EXPORT int ndctl_dimm_init_labels(struct ndctl_dimm *dimm,
-		enum ndctl_namespace_version v)
+		enum ndctl_label_version v)
 {
 	struct ndctl_bus *bus = ndctl_dimm_get_bus(dimm);
 	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
@@ -486,7 +507,8 @@ NDCTL_EXPORT int ndctl_dimm_validate_labels(struct ndctl_dimm *dimm)
 	return label_validate(&dimm->ndd);
 }
 
-NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *dimm)
+NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *dimm,
+		enum ndctl_label_version ver)
 {
         struct ndctl_bus *bus = ndctl_dimm_get_bus(dimm);
         struct ndctl_cmd *cmd_size, *cmd_read;
@@ -512,7 +534,19 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *di
 	 * size which corresponds to the maximum namespace index size.
 	 */
 	init_ndd(ndd, cmd_read, cmd_size);
-	ndd->nslabel_size = 128;
+
+	switch (ver) {
+	case NDCTL_LABEL_VERSION_1_1:
+		ndd->nslabel_size = 128;
+		break;
+	case NDCTL_LABEL_VERSION_1_2:
+	case NDCTL_LABEL_VERSION_2_1:
+		ndd->nslabel_size = 256;
+		break;
+	default:
+		return NULL;
+	}
+
 	rc = ndctl_cmd_cfg_read_set_extent(cmd_read,
 			sizeof_namespace_index(ndd) * 2, 0);
 	if (rc < 0)

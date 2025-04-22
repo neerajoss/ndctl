@@ -54,7 +54,39 @@ struct namespace_index {
 };
 
 /**
- * struct namespace_label - namespace superblock
+ * struct cxl_region_label - CXL 3.1 Table 9-10
+ * @type: uuid identifying this label format (region)
+ * @uuid: uuid for the region this label describes
+ * @flags: NSLABEL_FLAG_UPDATING (all other flags reserved)
+ * @nlabel: 1 per interleave-way in the region
+ * @position: this label's position in the set
+ * @dpa: start address in device-local capacity for this label
+ * @rawsize: size of this label's contribution to region
+ * @hpa: mandatory system physical address to map this region
+ * @slot: slot id of this label in label area
+ * @ig: interleave granularity (1 << @ig) * 256 bytes
+ * @align: alignment in SZ_256M blocks
+ * @reserved: reserved
+ * @checksum: fletcher64 sum of this label
+ */
+struct cxl_region_label {
+	char type[NSLABEL_UUID_LEN];
+	char uuid[NSLABEL_UUID_LEN];
+	le32 flags;
+	le16 nlabel;
+	le16 position;
+	le64 dpa;
+	le64 rawsize;
+	le64 hpa;
+	le32 slot;
+	le32 ig;
+	le32 align;
+	u8 reserved[0xac];
+	le64 checksum;
+};
+
+/**
+ * struct namespace_efi_label - namespace superblock
  * @uuid: UUID per RFC 4122
  * @name: optional name (NULL-terminated)
  * @flags: see NSLABEL_FLAG_*
@@ -66,7 +98,7 @@ struct namespace_index {
  * @rawsize: size of namespace
  * @slot: slot of this label in label area
  */
-struct namespace_label {
+struct namespace_efi_label {
 	char uuid[NSLABEL_UUID_LEN];
 	char name[NSLABEL_NAME_LEN];
 	le32 flags;
@@ -89,6 +121,58 @@ struct namespace_label {
 	le64 checksum;
 };
 
+/**
+ * struct namespace_cxl_label - CXL 3.1 Table 9-11
+ * @type: uuid identifying this label format (namespace)
+ * @uuid: uuid for the namespace this label describes
+ * @name: friendly name for the namespace
+ * @flags: NSLABEL_FLAG_UPDATING (all other flags reserved)
+ * @nrange: discontiguous namespace support
+ * @position: this label's position in the set
+ * @dpa: start address in device-local capacity for this label
+ * @rawsize: size of this label's contribution to namespace
+ * @slot: slot id of this label in label area
+ * @align: alignment in SZ_256M blocks
+ * @region_uuid: host interleave set identifier
+ * @abstraction_uuid: personality driver for this namespace
+ * @lbasize: address geometry for disk-like personalities
+ * @reserved: reserved
+ * @checksum: fletcher64 sum of this label
+ */
+struct namespace_cxl_label {
+	char type[NSLABEL_UUID_LEN];
+	char uuid[NSLABEL_UUID_LEN];
+	char name[NSLABEL_NAME_LEN];
+	le32 flags;
+	le16 nrange;
+	le16 position;
+	le64 dpa;
+	le64 rawsize;
+	le32 slot;
+	le32 align;
+	char region_uuid[16];
+	char abstraction_uuid[16];
+	le16 lbasize;
+	u8 reserved[0x56];
+	le64 checksum;
+};
+
+struct namespace_label {
+	union {
+		struct namespace_cxl_label cxl;
+		struct namespace_efi_label efi;
+	};
+};
+
+struct lsa_label {
+	union {
+		struct namespace_label ns_label;
+		struct cxl_region_label rg_label;
+	};
+};
+
+#define CXL_REGION_UUID "529d7c61-da07-47c4-a93f-ecdf2c06f444"
+#define CXL_NAMESPACE_UUID "68bb2c0a-5a77-4937-9f85-3caf41a0f93c"
 #define BTT_SIG_LEN 16
 #define BTT_SIG "BTT_ARENA_INFO\0"
 #define MAP_TRIM_SHIFT 31

@@ -31,7 +31,7 @@ static int err_count;
 
 struct action_context {
 	struct json_object *jdimms;
-	enum ndctl_namespace_version labelversion;
+	enum ndctl_label_version labelversion;
 	FILE *f_out;
 	FILE *f_in;
 	struct update_context update;
@@ -90,12 +90,251 @@ static int action_zero(struct ndctl_dimm *dimm, struct action_context *actx)
 	return ndctl_dimm_zero_label_extent(dimm, param.len, param.offset);
 }
 
-static struct json_object *dump_label_json(struct ndctl_dimm *dimm,
+static bool dump_cxl_ns_label_json(struct lsa_label *lsalabel,
+		struct json_object *jlabel, unsigned long flags)
+{
+	struct json_object *jobj;
+	char uuid[40];
+
+	uuid_unparse((void *) lsalabel->ns_label.cxl.type, uuid);
+	jobj = json_object_new_string(uuid);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "type", jobj);
+
+	uuid_unparse((void *) lsalabel->ns_label.cxl.uuid, uuid);
+	jobj = json_object_new_string(uuid);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "uuid", jobj);
+
+	lsalabel->ns_label.cxl.name[NSLABEL_NAME_LEN - 1] = 0;
+	jobj = json_object_new_string(lsalabel->ns_label.cxl.name);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "name", jobj);
+
+	jobj = util_json_object_hex(le32_to_cpu(
+				lsalabel->ns_label.cxl.flags), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "flags", jobj);
+
+	jobj = json_object_new_int(le16_to_cpu(
+				lsalabel->ns_label.cxl.nrange));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "nrange", jobj);
+
+	jobj = json_object_new_int(le16_to_cpu(
+				lsalabel->ns_label.cxl.position));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "position", jobj);
+
+	jobj = util_json_object_hex(le64_to_cpu(
+				lsalabel->ns_label.cxl.dpa), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "dpa", jobj);
+
+	jobj = util_json_object_size(le64_to_cpu(
+				lsalabel->ns_label.cxl.rawsize), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "rawsize", jobj);
+
+	jobj = json_object_new_int(le32_to_cpu(
+				lsalabel->ns_label.cxl.slot));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "slot", jobj);
+
+	jobj = json_object_new_int(le32_to_cpu(
+				lsalabel->ns_label.cxl.align));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "align", jobj);
+
+	uuid_unparse((void *) lsalabel->ns_label.cxl.region_uuid, uuid);
+	jobj = json_object_new_string(uuid);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "region_uuid", jobj);
+
+	uuid_unparse((void *) lsalabel->ns_label.cxl.abstraction_uuid,
+			uuid);
+	jobj = json_object_new_string(uuid);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "abstraction_uuid", jobj);
+
+	jobj = json_object_new_int(le16_to_cpu(
+				lsalabel->ns_label.cxl.lbasize));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "lbasize", jobj);
+
+	return true;
+
+fail:
+	return false;
+}
+
+static bool dump_cxl_rg_label_json(struct lsa_label *lsalabel,
+		struct json_object *jlabel, unsigned long flags)
+{
+	struct json_object *jobj;
+	char uuid[40];
+
+	uuid_unparse((void *) lsalabel->rg_label.type, uuid);
+	jobj = json_object_new_string(uuid);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "type", jobj);
+
+	uuid_unparse((void *) lsalabel->rg_label.uuid, uuid);
+	jobj = json_object_new_string(uuid);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "uuid", jobj);
+
+	jobj = util_json_object_hex(le32_to_cpu(
+				lsalabel->rg_label.flags), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "flags", jobj);
+
+	jobj = json_object_new_int(le16_to_cpu(
+				lsalabel->rg_label.nlabel));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "nlabel", jobj);
+
+	jobj = json_object_new_int(le16_to_cpu(
+				lsalabel->rg_label.position));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "position", jobj);
+
+	jobj = util_json_object_hex(le64_to_cpu(
+				lsalabel->rg_label.dpa), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "dpa", jobj);
+
+	jobj = util_json_object_size(le64_to_cpu(
+				lsalabel->rg_label.rawsize), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "rawsize", jobj);
+
+	jobj = util_json_object_size(le64_to_cpu(
+				lsalabel->rg_label.hpa), flags);
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "hpa", jobj);
+
+	jobj = json_object_new_int(le32_to_cpu(
+				lsalabel->rg_label.slot));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "slot", jobj);
+
+	jobj = json_object_new_int(le32_to_cpu(
+				lsalabel->rg_label.ig));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "interleave granularity", jobj);
+
+	jobj = json_object_new_int(le32_to_cpu(
+				lsalabel->rg_label.align));
+	if (!jobj)
+		goto fail;
+	json_object_object_add(jlabel, "align", jobj);
+
+	return true;
+
+fail:
+	return false;
+}
+
+static struct json_object *dump_cxl_label_json(struct ndctl_dimm *dimm,
 		struct ndctl_cmd *cmd_read, ssize_t size, unsigned long flags)
 {
 	struct json_object *jarray = json_object_new_array();
 	struct json_object *jlabel = NULL;
-	struct namespace_label nslabel;
+	struct lsa_label lsalabel;
+	unsigned int nsindex_size;
+	uuid_t ns_type, rg_type;
+	unsigned int slot = 0;
+	ssize_t offset;
+
+	if (!jarray)
+		return NULL;
+
+	nsindex_size = ndctl_dimm_sizeof_namespace_index(dimm);
+	if (nsindex_size == 0)
+		return NULL;
+
+	uuid_parse(CXL_NAMESPACE_UUID, ns_type);
+	uuid_parse(CXL_REGION_UUID, rg_type);
+
+	for (offset = nsindex_size * 2; offset < size;
+	     offset += ndctl_dimm_sizeof_namespace_label(dimm), slot++) {
+		ssize_t len = min_t(ssize_t,
+				ndctl_dimm_sizeof_namespace_label(dimm),
+				size - offset);
+
+		if (len < (ssize_t) ndctl_dimm_sizeof_namespace_label(dimm))
+			break;
+
+		len = ndctl_cmd_cfg_read_get_data(cmd_read, &lsalabel, len,
+				offset);
+		if (len < 0)
+			break;
+
+		jlabel = json_object_new_object();
+		if (!jlabel)
+			break;
+
+		if (!uuid_compare((void *) lsalabel.ns_label.cxl.type,
+					ns_type)) {
+			if (le32_to_cpu(lsalabel.ns_label.cxl.slot) != slot)
+				continue;
+
+			if(!dump_cxl_ns_label_json(&lsalabel, jlabel, flags))
+				break;
+
+		} else if (!uuid_compare((void *) lsalabel.rg_label.type,
+					rg_type)) {
+			if (le32_to_cpu(lsalabel.rg_label.slot) != slot)
+				continue;
+
+			if(!dump_cxl_rg_label_json(&lsalabel, jlabel, flags))
+				break;
+		} else
+			break;
+
+		json_object_array_add(jarray, jlabel);
+	}
+
+	if (json_object_array_length(jarray) < 1) {
+		json_object_put(jarray);
+		if (jlabel)
+			json_object_put(jlabel);
+		jarray = NULL;
+	}
+
+	return jarray;
+}
+
+static struct json_object *dump_efi_label_json(struct ndctl_dimm *dimm,
+		struct ndctl_cmd *cmd_read, ssize_t size, unsigned long flags)
+{
+	struct json_object *jarray = json_object_new_array();
+	struct json_object *jlabel = NULL;
+	struct lsa_label lsalabel;
 	unsigned int nsindex_size;
 	unsigned int slot = 0;
 	ssize_t offset;
@@ -122,62 +361,71 @@ static struct json_object *dump_label_json(struct ndctl_dimm *dimm,
 		if (len < (ssize_t) ndctl_dimm_sizeof_namespace_label(dimm))
 			break;
 
-		len = ndctl_cmd_cfg_read_get_data(cmd_read, &nslabel, len, offset);
+		len = ndctl_cmd_cfg_read_get_data(cmd_read, &lsalabel, len,
+				offset);
 		if (len < 0)
 			break;
 
-		if (le32_to_cpu(nslabel.slot) != slot)
+		if (le32_to_cpu(lsalabel.ns_label.efi.slot) != slot)
 			continue;
 
-		uuid_unparse((void *) nslabel.uuid, uuid);
+		uuid_unparse((void *) lsalabel.ns_label.efi.uuid, uuid);
 		jobj = json_object_new_string(uuid);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "uuid", jobj);
 
-		nslabel.name[NSLABEL_NAME_LEN - 1] = 0;
-		jobj = json_object_new_string(nslabel.name);
+		lsalabel.ns_label.efi.name[NSLABEL_NAME_LEN - 1] = 0;
+		jobj = json_object_new_string(lsalabel.ns_label.efi.name);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "name", jobj);
 
-		jobj = json_object_new_int(le32_to_cpu(nslabel.slot));
+		jobj = json_object_new_int(le32_to_cpu(
+					lsalabel.ns_label.efi.slot));
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "slot", jobj);
 
-		jobj = json_object_new_int(le16_to_cpu(nslabel.position));
+		jobj = json_object_new_int(le16_to_cpu(
+					lsalabel.ns_label.efi.position));
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "position", jobj);
 
-		jobj = json_object_new_int(le16_to_cpu(nslabel.nlabel));
+		jobj = json_object_new_int(le16_to_cpu(
+					lsalabel.ns_label.efi.nlabel));
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "nlabel", jobj);
 
-		jobj = util_json_object_hex(le32_to_cpu(nslabel.flags), flags);
+		jobj = util_json_object_hex(le32_to_cpu(
+					lsalabel.ns_label.efi.flags), flags);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "flags", jobj);
 
-		jobj = util_json_object_hex(le64_to_cpu(nslabel.isetcookie),
+		jobj = util_json_object_hex(le64_to_cpu(
+					lsalabel.ns_label.efi.isetcookie),
 				flags);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "isetcookie", jobj);
 
-		jobj = util_json_new_u64(le64_to_cpu(nslabel.lbasize));
+		jobj = util_json_new_u64(le64_to_cpu(
+					lsalabel.ns_label.efi.lbasize));
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "lbasize", jobj);
 
-		jobj = util_json_object_hex(le64_to_cpu(nslabel.dpa), flags);
+		jobj = util_json_object_hex(le64_to_cpu(
+					lsalabel.ns_label.efi.dpa), flags);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "dpa", jobj);
 
-		jobj = util_json_object_size(le64_to_cpu(nslabel.rawsize), flags);
+		jobj = util_json_object_size(le64_to_cpu(
+					lsalabel.ns_label.efi.rawsize), flags);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "rawsize", jobj);
@@ -187,13 +435,14 @@ static struct json_object *dump_label_json(struct ndctl_dimm *dimm,
 		if (ndctl_dimm_sizeof_namespace_label(dimm) < 256)
 			continue;
 
-		uuid_unparse((void *) nslabel.type_guid, uuid);
+		uuid_unparse((void *) lsalabel.ns_label.efi.type_guid, uuid);
 		jobj = json_object_new_string(uuid);
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "type_guid", jobj);
 
-		uuid_unparse((void *) nslabel.abstraction_guid, uuid);
+		uuid_unparse((void *) lsalabel.ns_label.efi.abstraction_guid,
+				uuid);
 		jobj = json_object_new_string(uuid);
 		if (!jobj)
 			break;
@@ -307,7 +556,18 @@ static struct json_object *dump_json(struct ndctl_dimm *dimm,
 	if (param.index)
 		return jdimm;
 
-	jlabel = dump_label_json(dimm, cmd_read, size, flags);
+	switch (ndctl_dimm_label_version(dimm)) {
+	case NDCTL_LABEL_VERSION_1_1:
+	case NDCTL_LABEL_VERSION_1_2:
+		jlabel = dump_efi_label_json(dimm, cmd_read, size, flags);
+		break;
+	case NDCTL_LABEL_VERSION_2_1:
+		jlabel = dump_cxl_label_json(dimm, cmd_read, size, flags);
+		break;
+	default:
+		return NULL;
+	}
+
 	if (!jlabel)
 		goto err;
 	json_object_object_add(jdimm, "label", jlabel);
@@ -412,7 +672,8 @@ static int action_read(struct ndctl_dimm *dimm, struct action_context *actx)
 	int rc = 0;
 
 	if (param.index)
-		cmd_read = ndctl_dimm_read_label_index(dimm);
+		cmd_read = ndctl_dimm_read_label_index(dimm,
+				actx->labelversion);
 	else
 		cmd_read = ndctl_dimm_read_label_extent(dimm, param.len,
 				param.offset);
@@ -1119,12 +1380,12 @@ static int action_wait_overwrite(struct ndctl_dimm *dimm,
 }
 
 static int __action_init(struct ndctl_dimm *dimm,
-		enum ndctl_namespace_version version, int chk_only)
+		enum ndctl_label_version version, int chk_only)
 {
 	struct ndctl_cmd *cmd_read;
 	int rc;
 
-	cmd_read = ndctl_dimm_read_label_index(dimm);
+	cmd_read = ndctl_dimm_read_label_index(dimm, version);
 	if (!cmd_read)
 		return -ENXIO;
 
@@ -1179,14 +1440,16 @@ static int action_init(struct ndctl_dimm *dimm, struct action_context *actx)
 
 static int action_check(struct ndctl_dimm *dimm, struct action_context *actx)
 {
-	return __action_init(dimm, 0, 1);
+	return __action_init(dimm, actx->labelversion, 1);
 }
 
 
 #define BASE_OPTIONS() \
 OPT_STRING('b', "bus", &param.bus, "bus-id", \
 	"<nmem> must be on a bus with an id/provider of <bus-id>"), \
-OPT_BOOLEAN('v',"verbose", &param.verbose, "turn on debug")
+OPT_BOOLEAN('v',"verbose", &param.verbose, "turn on debug"), \
+OPT_STRING('V', "label-version", &param.labelversion, "version-number", \
+	"namespace label specification version (default: 1.1)")
 
 #define READ_OPTIONS() \
 OPT_STRING('o', "output", &param.outfile, "output-file", \
@@ -1210,9 +1473,7 @@ OPT_BOOLEAN_SET('D', "disarm", &param.disarm, &param.disarm_set, \
 
 #define INIT_OPTIONS() \
 OPT_BOOLEAN('f', "force", &param.force, \
-		"force initialization even if existing index-block present"), \
-OPT_STRING('V', "label-version", &param.labelversion, "version-number", \
-	"namespace label specification version (default: 1.1)")
+		"force initialization even if existing index-block present")
 
 #define KEY_OPTIONS() \
 OPT_STRING('k', "key-handle", &param.kek, "key-handle", \
@@ -1404,13 +1665,17 @@ static int dimm_action(int argc, const char **argv, struct ndctl_ctx *ctx,
 		ndctl_set_log_priority(ctx, LOG_DEBUG);
 
 	if (strcmp(param.labelversion, "1.1") == 0)
-		actx.labelversion = NDCTL_NS_VERSION_1_1;
+		actx.labelversion = NDCTL_LABEL_VERSION_1_1;
 	else if (strcmp(param.labelversion, "v1.1") == 0)
-		actx.labelversion = NDCTL_NS_VERSION_1_1;
+		actx.labelversion = NDCTL_LABEL_VERSION_1_1;
 	else if (strcmp(param.labelversion, "1.2") == 0)
-		actx.labelversion = NDCTL_NS_VERSION_1_2;
+		actx.labelversion = NDCTL_LABEL_VERSION_1_2;
 	else if (strcmp(param.labelversion, "v1.2") == 0)
-		actx.labelversion = NDCTL_NS_VERSION_1_2;
+		actx.labelversion = NDCTL_LABEL_VERSION_1_2;
+	else if (strcmp(param.labelversion, "2.1") == 0)
+		actx.labelversion = NDCTL_LABEL_VERSION_2_1;
+	else if (strcmp(param.labelversion, "v2.1") == 0)
+		actx.labelversion = NDCTL_LABEL_VERSION_2_1;
 	else {
 		fprintf(stderr, "'%s' is not a valid label version\n",
 				param.labelversion);
