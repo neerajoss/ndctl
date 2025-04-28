@@ -765,6 +765,15 @@ static int create_region(struct cxl_ctx *ctx, int *count,
 	}
 	*count = 1;
 
+	if (p->mode == CXL_DECODER_MODE_PMEM) {
+		rc = cxl_region_label_update(region);
+		if (rc) {
+			log_err(&rl, "%s: failed to update region label in LSA: %s\n",
+				devname, strerror(-rc));
+			goto out;
+		}
+	}
+
 	if (isatty(1))
 		flags |= UTIL_JSON_HUMAN;
 	jregion = util_cxl_region_to_json(region, flags);

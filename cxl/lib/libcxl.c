@@ -1050,6 +1050,46 @@ CXL_EXPORT int cxl_region_decode_reset(struct cxl_region *region)
 	return set_region_decode(region, CXL_DECODE_RESET);
 }
 
+CXL_EXPORT int cxl_region_label_update(struct cxl_region *region)
+{
+	const char *devname = cxl_region_get_devname(region);
+	struct cxl_ctx *ctx = cxl_region_get_ctx(region);
+	int len = region->buf_len, rc;
+	char *path = region->dev_buf;
+	char *region_path, *pmem_name;
+	char buf[SYSFS_ATTR_SIZE];
+
+	region_path = realpath(region->dev_path, NULL);
+	if (!region_path) {
+		err(ctx, "%s: Invalid region dev_path%s!\n", devname,
+				region->dev_path);
+		return -EINVAL;
+	}
+
+	pmem_name = basename(region_path);
+
+	if (snprintf(path, len, "%s/pmem_%s/region_label_update",
+				region->dev_path, pmem_name) >= len) {
+		err(ctx, "%s: buffer too small!\n", devname);
+		return -ENXIO;
+	}
+
+	/* No region label updation for LSA < 2.1 */
+	if (access(path, F_OK) != 0) {
+		dbg(ctx, "%s LSA 2.1 format not supported\n", devname);
+		return 0;
+	}
+
+	sprintf(buf, "%d\n", CXL_REGION_LABEL_UPDATE);
+	rc = sysfs_write_attr(ctx, path, buf);
+	if (rc < 0)
+		return rc;
+
+	region->label_state = CXL_REGION_LABEL_UPDATE;
+
+	return 0;
+}
+
 static struct cxl_decoder *__cxl_port_match_decoder(struct cxl_port *port,
 						    const char *ident)
 {

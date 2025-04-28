@@ -156,6 +156,11 @@ enum cxl_decode_state {
 	CXL_DECODE_COMMIT,
 };
 
+enum cxl_region_label_state {
+	CXL_REGION_LABEL_DELETE = 0,
+	CXL_REGION_LABEL_UPDATE = 1,
+};
+
 struct cxl_region {
 	struct cxl_decoder *decoder;
 	struct list_node list;
@@ -171,6 +176,7 @@ struct cxl_region {
 	unsigned int interleave_ways;
 	unsigned int interleave_granularity;
 	enum cxl_decode_state decode_state;
+	enum cxl_region_label_state label_state;
 	enum cxl_decoder_mode mode;
 	struct daxctl_region *dax_region;
 	struct kmod_module *module;
